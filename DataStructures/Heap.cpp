@@ -1,35 +1,5 @@
 #include "Heap.h"
 
-// ==================== MinHeapStock Implementation ====================
-
-int MinHeapStock::findIndexMapping(const string& isbn) const {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            return indexMap[i].index;
-        }
-    }
-    return -1;
-}
-
-void MinHeapStock::updateIndexMapping(const string& isbn, int newIndex) {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            indexMap[i].index = newIndex;
-            return;
-        }
-    }
-    indexMap.push_back(IndexMapping(isbn, newIndex));
-}
-
-void MinHeapStock::removeIndexMapping(const string& isbn) {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            indexMap.erase(indexMap.begin() + i);
-            return;
-        }
-    }
-}
-
 void MinHeapStock::heapifyUp(int index) {
     while (index > 0 && heap[getParentIndex(index)].priority > heap[index].priority) {
         swap(index, getParentIndex(index));
@@ -56,8 +26,8 @@ void MinHeapStock::heapifyDown(int index) {
 }
 
 void MinHeapStock::swap(int i, int j) {
-    updateIndexMapping(heap[i].isbn, j);
-    updateIndexMapping(heap[j].isbn, i);
+    indexMap.insert(heap[i].isbn, j);
+    indexMap.insert(heap[j].isbn, i);
     
     HeapNode<int> temp = heap[i];
     heap[i] = heap[j];
@@ -72,7 +42,7 @@ void MinHeapStock::insert(const string& isbn, int stock) {
     
     heap.push_back(HeapNode<int>(isbn, stock));
     int index = heap.size() - 1;
-    updateIndexMapping(isbn, index);
+    indexMap.insert(isbn, index);
     heapifyUp(index);
 }
 
@@ -81,7 +51,7 @@ void MinHeapStock::updateStock(const string& isbn, int newStock) {
         throw runtime_error("Book not found in heap");
     }
 
-    int index = findIndexMapping(isbn);
+    int index = indexMap.get(isbn);
     int oldStock = heap[index].priority;
     heap[index].priority = newStock;
 
@@ -112,13 +82,13 @@ string MinHeapStock::extractMin() {
     }
 
     string minIsbn = heap[0].isbn;
-    removeIndexMapping(minIsbn);
+    indexMap.remove(minIsbn);
 
     heap[0] = heap.back();
     heap.pop_back();
 
     if (!heap.empty()) {
-        updateIndexMapping(heap[0].isbn, 0);
+        indexMap.insert(heap[0].isbn, 0);
         heapifyDown(0);
     }
 
@@ -141,7 +111,7 @@ vector<pair<string, int>> MinHeapStock::getTopNLowStock(int n) const {
 }
 
 bool MinHeapStock::contains(const string& isbn) const {
-    return findIndexMapping(isbn) != -1;
+    return indexMap.contains(isbn);
 }
 
 void MinHeapStock::remove(const string& isbn) {
@@ -149,17 +119,17 @@ void MinHeapStock::remove(const string& isbn) {
         return;
     }
 
-    int index = findIndexMapping(isbn);
-    removeIndexMapping(isbn);
+    int index = indexMap.get(isbn);
+    indexMap.remove(isbn);
 
     heap[index] = heap.back();
     heap.pop_back();
 
     if (index < heap.size()) {
-        updateIndexMapping(heap[index].isbn, index);
+        indexMap.insert(heap[index].isbn, index);
 
         heapifyUp(index);
-        if (findIndexMapping(heap[index].isbn) == index) {
+        if (indexMap.get(heap[index].isbn) == index) {
             heapifyDown(index);
         }
     }
@@ -168,36 +138,6 @@ void MinHeapStock::remove(const string& isbn) {
 void MinHeapStock::clear() {
     heap.clear();
     indexMap.clear();
-}
-
-// ==================== MaxHeapSales Implementation ====================
-
-int MaxHeapSales::findIndexMapping(const string& isbn) const {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            return indexMap[i].index;
-        }
-    }
-    return -1;
-}
-
-void MaxHeapSales::updateIndexMapping(const string& isbn, int newIndex) {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            indexMap[i].index = newIndex;
-            return;
-        }
-    }
-    indexMap.push_back(IndexMapping(isbn, newIndex));
-}
-
-void MaxHeapSales::removeIndexMapping(const string& isbn) {
-    for (size_t i = 0; i < indexMap.size(); i++) {
-        if (indexMap[i].isbn == isbn) {
-            indexMap.erase(indexMap.begin() + i);
-            return;
-        }
-    }
 }
 
 void MaxHeapSales::heapifyUp(int index) {
@@ -226,8 +166,8 @@ void MaxHeapSales::heapifyDown(int index) {
 }
 
 void MaxHeapSales::swap(int i, int j) {
-    updateIndexMapping(heap[i].isbn, j);
-    updateIndexMapping(heap[j].isbn, i);
+    indexMap.insert(heap[i].isbn, j);
+    indexMap.insert(heap[j].isbn, i);
     
     HeapNode<int> temp = heap[i];
     heap[i] = heap[j];
@@ -242,7 +182,7 @@ void MaxHeapSales::insert(const string& isbn, int salesCount) {
 
     heap.push_back(HeapNode<int>(isbn, salesCount));
     int index = heap.size() - 1;
-    updateIndexMapping(isbn, index);
+    indexMap.insert(isbn, index);
     heapifyUp(index);
 }
 
@@ -251,7 +191,7 @@ void MaxHeapSales::updateSales(const string& isbn, int newSalesCount) {
         throw runtime_error("Book not found in heap");
     }
 
-    int index = findIndexMapping(isbn);
+    int index = indexMap.get(isbn);
     int oldSales = heap[index].priority;
     heap[index].priority = newSalesCount;
 
@@ -266,7 +206,7 @@ void MaxHeapSales::incrementSales(const string& isbn, int increment) {
     if (!contains(isbn)) {
         insert(isbn, increment);
     } else {
-        int index = findIndexMapping(isbn);
+        int index = indexMap.get(isbn);
         heap[index].priority += increment;
         heapifyUp(index);
     }
@@ -292,13 +232,13 @@ string MaxHeapSales::extractMax() {
     }
 
     string maxIsbn = heap[0].isbn;
-    removeIndexMapping(maxIsbn);
+    indexMap.remove(maxIsbn);
 
     heap[0] = heap.back();
     heap.pop_back();
 
     if (!heap.empty()) {
-        updateIndexMapping(heap[0].isbn, 0);
+        indexMap.insert(heap[0].isbn, 0);
         heapifyDown(0);
     }
 
@@ -321,7 +261,7 @@ vector<pair<string, int>> MaxHeapSales::getTopNBestSellers(int n) const {
 }
 
 bool MaxHeapSales::contains(const string& isbn) const {
-    return findIndexMapping(isbn) != -1;
+    return indexMap.contains(isbn);
 }
 
 void MaxHeapSales::remove(const string& isbn) {
@@ -329,17 +269,17 @@ void MaxHeapSales::remove(const string& isbn) {
         return;
     }
 
-    int index = findIndexMapping(isbn);
-    removeIndexMapping(isbn);
+    int index = indexMap.get(isbn);
+    indexMap.remove(isbn);
 
     heap[index] = heap.back();
     heap.pop_back();
 
     if (index < heap.size()) {
-        updateIndexMapping(heap[index].isbn, index);
+        indexMap.insert(heap[index].isbn, index);
 
         heapifyUp(index);
-        if (findIndexMapping(heap[index].isbn) == index) {
+        if (indexMap.get(heap[index].isbn) == index) {
             heapifyDown(index);
         }
     }
@@ -354,5 +294,5 @@ int MaxHeapSales::getSalesCount(const string& isbn) const {
     if (!contains(isbn)) {
         return 0;
     }
-    return heap[findIndexMapping(isbn)].priority;
+    return heap[indexMap.get(isbn)].priority;
 }
