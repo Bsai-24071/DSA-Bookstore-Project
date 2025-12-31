@@ -1,11 +1,9 @@
 #ifndef INVENTORY_MANAGER_H
 #define INVENTORY_MANAGER_H
-
 #include "Heap.h"
 #include "Books.h"
 #include <vector>
 #include <mutex>
-
 using namespace std;
 
 struct StockData {

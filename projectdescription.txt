@@ -1,0 +1,151 @@
+BOOKSTORE INVENTORY MANAGEMENT SYSTEM - MID SUBMISSION
+
+PROJECT: Multi-Index Database for Bookstore Management
+
+
+WHAT I HAVE COMPLETED SO FAR:
+
+Data Structures (3 implemented):
+- Hash Table for fast ISBN lookup
+- B-Tree for organizing books by category
+- AVL Tree for filtering books by price range
+
+Main Features Working:
+- Adding new books to the system
+- Searching books by ISBN number
+- Viewing all books sorted by category
+- Filtering books within a price range
+- Data saves automatically to bookstore_data.txt file
+- System loads previous data when restarted
+
+Backend System:
+- Built a C++ HTTP server that handles requests
+- Created DatabaseManager that controls all three data structures
+- Four API endpoints working:
+  * Add new book
+  * Search by ISBN
+  * Filter by price
+  * Get full inventory
+- File operations for saving and loading data
+
+Frontend Interface:
+- Web page with forms to add books
+- Search box for finding books by ISBN
+- Price filter with min/max inputs
+- Table showing all books in inventory
+- Everything connects to backend through HTTP requests
+
+Testing Done:
+- Tested each data structure separately
+- Tested all features working together
+- Verified frontend talks to backend correctly
+- Confirmed data saves and loads properly
+
+
+WHAT REMAINS TO BE DONE:
+
+Additional Features Needed:
+- Add update function to change book details
+- Add delete function to remove books
+- Implement one or two more data structures
+- Better error handling and input validation
+
+
+
+HOW TO RUN THE PROJECT:
+
+Compile Backend:
+g++ Backend/main.cpp DataStructures/DatabaseManager.cpp DataStructures/HashTable.cpp DataStructures/BTree.cpp DataStructures/AVLTree.cpp -o server -IDataStructures -IBackend -lws2_32
+
+Run Server:
+./server.exe
+
+Access Frontend:
+Open Frontend/index.html in any web browser
+
+Note: Backend runs on http://localhost:9000
+
+
+CURRENT STATUS:
+
+Overall Progress: About 50% complete
+- Core functionality is fully working
+- All three main data structures implemented
+- Backend and frontend successfully connected
+- Basic features operational
+
+Next Steps:
+- Add update and delete operations
+- Consider adding more data structures
+- Improve documentation
+- Enhance error handling
+
+
+IMPORTANT NOTES:
+
+The system is working well with the three data structures integrated properly. 
+Data persists between sessions. Frontend and backend communicate without issues.
+Ready to demonstrate current features.
+
+The project handles the basic bookstore operations efficiently and is stable 
+for the features implemented so far.
+
+Final deployment on AWS is planned once all core functionality is complete. 
+
+
+
+
+
+
+
+
+
+
+# Step 1: Compile
+g++ -o test_heap.exe Tests/test_heap.cpp DataStructures/Heap.cpp DataStructures/InventoryManager.cpp -std=c++11
+
+# Step 2: Run
+./test_heap.exe
+
+
+
+
+
+ ssh -i C:\Users\ahmadkhan\.ssh\bookstore-key.pem ubuntu@3.94.129.50
+
+ scp -i C:\Users\ahmadkhan\.ssh\bookstore-key.pem Backend\server.cpp ubuntu@3.94.129.50:~/bookstore/Backend/
+
+ g++ -std=c++17 -pthread -o bookstore_server Backend/server.cpp DataStructures/AVLTree.cpp DataStructures/BTree.cpp DataStructures/HashTable.cpp DataStructures/Heap.cpp DataStructures/DatabaseManager.cpp DataStructures/InventoryManager.cpp -I./DataStructures
+
+ nohup ./bookstore_server > server.log 2>&1 &
+
+
+ curl localhost:9000/api/health
+
+ cd D:\Bookstore_bsai24071_Project
+
+ scp -i C:\Users\ahmadkhan\.ssh\bookstore-key.pem Backend\server.cpp ubuntu@3.94.129.50:~/bookstore/Backend/
+
+ pkill bookstore_server
+ nohup ./bookstore_server > server.log 2>&1 &
+
+ ps aux | grep bookstore_server
+
+
+ # Make sure you're in the bookstore directory
+cd ~/bookstore
+
+# Compile the project
+g++ -std=c++17 -pthread -o bookstore_server Backend/server.cpp DataStructures/AVLTree.cpp DataStructures/BTree.cpp DataStructures/HashTable.cpp DataStructures/Heap.cpp DataStructures/DatabaseManager.cpp DataStructures/InventoryManager.cpp -I./DataStructures
+
+# Check if compilation succeeded
+ls -l bookstore_server
+
+# Start the server (use the correct executable name)
+nohup ./bookstore_server > server.log 2>&1 &
+
+# Verify it's running
+ps aux | grep bookstore_server
+
+# Test the health endpoint
+curl localhost:9000/api/health

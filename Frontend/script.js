@@ -1,3 +1,4 @@
+
 function hashPassword(password) {
     let hash = 0;
     for (let i = 0; i < password.length; i++) {
@@ -17,20 +18,44 @@ const DatabaseStore = {
     
     currentUser: null,
 
-    searchByISBN(isbn) {
-        return this.books.find(book => book.isbn === isbn) || null;
+    async searchByISBN(isbn) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.searchByISBN(isbn));
+            if (response.ok) {
+                const book = await response.json();
+                if (book.error) return null;
+                return book;
+            }
+        } catch (error) {
+            console.error('Search by ISBN failed:', error);
+        }
+        return null;
     },
 
-    searchByCategory(category) {
-        return this.books.filter(book => 
-            book.category.toLowerCase() === category.toLowerCase()
-        );
+    async searchByCategory(category) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.searchByCategory(category));
+            if (response.ok) {
+                const books = await response.json();
+                return books;
+            }
+        } catch (error) {
+            console.error('Search by category failed:', error);
+        }
+        return [];
     },
 
-    searchByPrice(minPrice, maxPrice) {
-        return this.books.filter(book => 
-            book.price >= minPrice && book.price <= maxPrice
-        );
+    async searchByPrice(minPrice, maxPrice) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.searchByPrice(minPrice, maxPrice));
+            if (response.ok) {
+                const books = await response.json();
+                return books;
+            }
+        } catch (error) {
+            console.error('Search by price failed:', error);
+        }
+        return [];
     },
 
     getLowStockBooks(limit = 10) {
@@ -45,127 +70,246 @@ const DatabaseStore = {
             .slice(0, limit);
     },
 
-    addBook(isbn, title, author, category, price, stock) {
-        if (this.searchByISBN(isbn)) {
-            return { success: false, message: "ISBN already exists!" };
+    async addBook(isbn, title, author, category, price, stock) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.getAll, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isbn, title, author, category, price, stock })
+            });
+            if (response.ok) {
+                const result = await response.json();
+                await this.loadBooksFromBackend();
+                return { success: true, message: "Book added successfully!" };
+            }
+        } catch (error) {
+            console.error('Add book failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        this.books.push({ isbn, title, author, category, price, stock, salesCount: 0 });
-        this.saveToLocalStorage();
-        return { success: true, message: "Book added successfully!" };
+        return { success: false, message: "Failed to add book" };
     },
 
-    updateBook(isbn, title, author, category, price) {
-        const book = this.searchByISBN(isbn);
-        if (!book) {
-            return { success: false, message: "Book not found!" };
+    async updateBook(isbn, title, author, category, price) {
+        try {
+            const response = await fetch(`${window.API_CONFIG.BASE_URL}/api/books/${isbn}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, author, category, price })
+            });
+            if (response.ok) {
+                await this.loadBooksFromBackend();
+                return { success: true, message: "Book updated successfully!" };
+            }
+        } catch (error) {
+            console.error('Update book failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        book.title = title;
-        book.author = author;
-        book.category = category;
-        book.price = price;
-        this.saveToLocalStorage();
-        return { success: true, message: "Book updated successfully!" };
+        return { success: false, message: "Book not found!" };
     },
 
-    deleteBook(isbn) {
-        const index = this.books.findIndex(book => book.isbn === isbn);
-        if (index === -1) {
-            return { success: false, message: "Book not found!" };
+    async deleteBook(isbn) {
+        try {
+            const response = await fetch(`${window.API_CONFIG.BASE_URL}/api/books/${isbn}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                await this.loadBooksFromBackend();
+                return { success: true, message: "Book deleted successfully!" };
+            }
+        } catch (error) {
+            console.error('Delete book failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        this.books.splice(index, 1);
-        this.saveToLocalStorage();
-        return { success: true, message: "Book deleted successfully!" };
+        return { success: false, message: "Book not found!" };
     },
 
-    processSale(isbn, quantity) {
-        const book = this.searchByISBN(isbn);
-        if (!book) {
-            return { success: false, message: "Book not found!" };
+    async processSale(isbn, quantity) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.sales, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isbn, quantity })
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadBooksFromBackend();
+                    const book = this.books.find(b => b.isbn === isbn);
+                    return { success: true, message: result.message, total: book ? book.price * quantity : 0 };
+                }
+            }
+        } catch (error) {
+            console.error('Process sale failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        if (book.stock < quantity) {
-            return { success: false, message: "Insufficient stock!" };
-        }
-        book.stock -= quantity;
-        book.salesCount += quantity;
-        this.saveToLocalStorage();
-        return { success: true, message: "Sale processed successfully!", total: book.price * quantity };
+        return { success: false, message: "Insufficient stock or book not found" };
     },
 
-    updateStock(isbn, newStock) {
-        const book = this.searchByISBN(isbn);
-        if (!book) {
-            return { success: false, message: "Book not found!" };
+    async updateStock(isbn, newStock) {
+        try {
+            const payload = { stock: parseInt(newStock) };
+            console.log('Updating stock for', isbn, 'with payload:', payload);
+            
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.updateStock(isbn), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            console.log('Stock update response status:', response.status);
+            
+            if (response.ok) {
+                const result = await response.json();
+                await this.loadBooksFromBackend();
+                return { success: true, message: result.message || "Stock updated successfully" };
+            } else {
+                const errorText = await response.text();
+                console.error('Stock update failed with status:', response.status, 'Body:', errorText);
+                return { success: false, message: `Stock update failed (${response.status})` };
+            }
+        } catch (error) {
+            console.error('Update stock failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        book.stock = newStock;
-        this.saveToLocalStorage();
-        return { success: true, message: "Stock updated successfully!" };
     },
 
-    takeBook(isbn) {
-        const book = this.searchByISBN(isbn);
-        if (!book) {
-            return { success: false, message: "Book not found!" };
+    async takeBook(isbn) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.take(isbn), {
+                method: 'POST'
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadBooksFromBackend();
+                    this.currentUser.myBooks.push(isbn);
+                    // Also update in users array
+                    const userInArray = this.users.find(u => u.username === this.currentUser.username);
+                    if (userInArray) {
+                        userInArray.myBooks = [...this.currentUser.myBooks];
+                    }
+                    this.saveToLocalStorage();
+                    return { success: true, message: result.message };
+                }
+            }
+        } catch (error) {
+            console.error('Take book failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        if (book.stock < 1) {
-            return { success: false, message: "Book out of stock!" };
-        }
-        book.stock--;
-        book.salesCount++;
-        this.currentUser.myBooks.push(isbn);
-        this.saveToLocalStorage();
-        return { success: true, message: "Book taken successfully!" };
+        return { success: false, message: "Book out of stock or not found" };
     },
 
-    dropBook(isbn) {
-        const book = this.searchByISBN(isbn);
-        if (!book) {
-            return { success: false, message: "Book not found!" };
-        }
+    async dropBook(isbn) {
         const index = this.currentUser.myBooks.indexOf(isbn);
         if (index === -1) {
             return { success: false, message: "You don't have this book!" };
         }
-        book.stock++;
-        this.currentUser.myBooks.splice(index, 1);
-        this.saveToLocalStorage();
-        return { success: true, message: "Book returned successfully!" };
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.drop(isbn), {
+                method: 'POST'
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    await this.loadBooksFromBackend();
+                    this.currentUser.myBooks.splice(index, 1);
+                    // Also update in users array
+                    const userInArray = this.users.find(u => u.username === this.currentUser.username);
+                    if (userInArray) {
+                        userInArray.myBooks = [...this.currentUser.myBooks];
+                    }
+                    this.saveToLocalStorage();
+                    return { success: true, message: result.message };
+                }
+            }
+        } catch (error) {
+            console.error('Drop book failed:', error);
+            return { success: false, message: "Failed to connect to server" };
+        }
+        return { success: false, message: "Book not found!" };
     },
 
-    login(username, password) {
-        const hashedPwd = hashPassword(password);
-        const user = this.users.find(u => 
-            u.username === username && u.hashedPassword === hashedPwd
-        );
-        if (user) {
-            this.currentUser = user;
-            return { success: true, user };
+    async login(username, password) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.auth.login, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    // Preserve myBooks from localStorage if this user was logged in before
+                    const existingUser = this.users.find(u => u.username === result.user.username);
+                    const myBooks = existingUser?.myBooks || [];
+                    
+                    // If user not in local array, add them
+                    if (!existingUser) {
+                        this.users.push({
+                            username: result.user.username,
+                            hashedPassword: '',
+                            isAdmin: result.user.isAdmin,
+                            myBooks: []
+                        });
+                    }
+                    
+                    this.currentUser = { ...result.user, myBooks };
+                    this.saveToLocalStorage();
+                    return { success: true, user: this.currentUser };
+                }
+            }
+        } catch (error) {
+            console.error('Login failed:', error);
         }
         return { success: false, message: "Invalid credentials!" };
     },
 
-    register(username, password) {
-        if (this.users.find(u => u.username === username)) {
-            return { success: false, message: "Username already exists!" };
+    async register(username, password) {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.auth.register, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    // Add new user to local users array with myBooks initialized
+                    this.users.push({
+                        username: username,
+                        hashedPassword: hashPassword(password),
+                        isAdmin: false,
+                        myBooks: []
+                    });
+                    this.saveToLocalStorage();
+                    return { success: true, message: "Registration successful! Please login." };
+                }
+            }
+            const errorResult = await response.json();
+            return { success: false, message: errorResult.message || "Registration failed" };
+        } catch (error) {
+            console.error('Registration failed:', error);
+            return { success: false, message: "Failed to connect to server" };
         }
-        const newUser = {
-            username,
-            hashedPassword: hashPassword(password),
-            isAdmin: false,
-            myBooks: []
-        };
-        this.users.push(newUser);
-        this.saveToLocalStorage();
-        return { success: true, message: "Registration successful!" };
     },
 
     logout() {
+        // Make sure current user's books are saved to users array before logout
+        if (this.currentUser) {
+            const userInArray = this.users.find(u => u.username === this.currentUser.username);
+            if (userInArray) {
+                userInArray.myBooks = [...this.currentUser.myBooks];
+            }
+        }
         this.currentUser = null;
+        this.saveToLocalStorage();
     },
 
     saveToLocalStorage() {
         localStorage.setItem('bookstore_data', JSON.stringify({
             books: this.books,
-            users: this.users
+            users: this.users,
+            currentUser: this.currentUser
         }));
     },
 
@@ -175,6 +319,7 @@ const DatabaseStore = {
             const parsed = JSON.parse(data);
             this.books = parsed.books || this.books;
             this.users = parsed.users || this.users;
+            this.currentUser = parsed.currentUser || null;
             
             const adminUser = this.users.find(u => u.username === "admin");
             if (!adminUser) {
@@ -188,15 +333,32 @@ const DatabaseStore = {
         return false;
     },
 
-    async loadBooksFromJSON() {
+    async loadBooksFromBackend() {
         try {
-            const response = await fetch('books_data.json');
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.books.getAll);
             if (response.ok) {
                 this.books = await response.json();
+                this.saveToLocalStorage();
+                return true;
             }
         } catch (error) {
-            console.error('Failed to load books data:', error);
+            console.error('Failed to load books from backend:', error);
+            showToast('Failed to connect to backend server', 'error');
         }
+        return false;
+    },
+
+    async loadDashboardData() {
+        try {
+            const response = await fetch(window.API_CONFIG.ENDPOINTS.dashboard);
+            if (response.ok) {
+                const data = await response.json();
+                return data;
+            }
+        } catch (error) {
+            console.error('Failed to load dashboard data:', error);
+        }
+        return null;
     }
 };
 
@@ -430,11 +592,28 @@ function renderWelcomeView() {
     `;
 }
 
-function renderDashboardView() {
-    const lowStock = DatabaseStore.getLowStockBooks(5);
-    const bestSellers = DatabaseStore.getBestSellers(5);
-    
+async function renderDashboardView() {
     const content = document.getElementById('mainContent');
+    content.innerHTML = '<div class="flex justify-center items-center h-64"><div class="text-emerald-500">Loading dashboard...</div></div>';
+    
+    const dashboardData = await DatabaseStore.loadDashboardData();
+    if (!dashboardData) {
+        content.innerHTML = '<div class="text-center text-red-500 py-8">Failed to load dashboard data</div>';
+        return;
+    }
+    
+    await DatabaseStore.loadBooksFromBackend();
+    
+    const lowStockBooks = dashboardData.lowStock.map(item => {
+        const book = DatabaseStore.books.find(b => b.isbn === item.isbn);
+        return book ? { ...book, stock: item.stock } : null;
+    }).filter(b => b !== null).slice(0, 5);
+    
+    const bestSellerBooks = dashboardData.bestSellers.map(item => {
+        const book = DatabaseStore.books.find(b => b.isbn === item.isbn);
+        return book ? { ...book, salesCount: item.sales } : null;
+    }).filter(b => b !== null).slice(0, 5);
+    
     content.innerHTML = `
         <h1 class="text-3xl font-bold text-emerald-500 mb-8 flex items-center gap-3">
             <i data-lucide="layout-dashboard" class="w-8 h-8"></i>
@@ -481,7 +660,7 @@ function renderDashboardView() {
                     </h2>
                 </div>
                 <div class="p-6 space-y-3">
-                    ${lowStock.map(book => `
+                    ${lowStockBooks.map(book => `
                         <div class="flex items-center justify-between p-3 bg-slate-700 rounded-lg">
                             <div class="flex-1">
                                 <p class="font-medium">${book.title}</p>
@@ -503,7 +682,7 @@ function renderDashboardView() {
                     </h2>
                 </div>
                 <div class="p-6 space-y-3">
-                    ${bestSellers.map(book => `
+                    ${bestSellerBooks.map(book => `
                         <div class="flex items-center justify-between p-3 bg-slate-700 rounded-lg">
                             <div class="flex-1">
                                 <p class="font-medium">${book.title}</p>
@@ -554,7 +733,7 @@ function renderAllBooksView(page = 1) {
                         <h3 class="text-lg font-bold text-emerald-500">${book.title}</h3>
                         ${DatabaseStore.currentUser?.isAdmin ? `
                             <div class="flex gap-2">
-                                <button onclick='showUpdateBookModal(${JSON.stringify(book)})' class="text-blue-500 hover:text-blue-400">
+                                <button onclick='showUpdateBookModal("${book.isbn}")' class="text-blue-500 hover:text-blue-400">
                                     <i data-lucide="edit" class="w-4 h-4"></i>
                                 </button>
                                 <button onclick='deleteBookConfirm("${book.isbn}")' class="text-red-500 hover:text-red-400">
@@ -711,8 +890,8 @@ function renderProcessSaleView() {
         </form>
     `;
     
-    document.getElementById('saleISBN').addEventListener('input', (e) => {
-        const book = DatabaseStore.searchByISBN(e.target.value);
+    document.getElementById('saleISBN').addEventListener('input', async (e) => {
+        const book = await DatabaseStore.searchByISBN(e.target.value);
         const infoDiv = document.getElementById('saleBookInfo');
         if (book) {
             infoDiv.classList.remove('hidden');
@@ -751,8 +930,8 @@ function renderTakeBookView() {
         </form>
     `;
     
-    document.getElementById('takeISBN').addEventListener('input', (e) => {
-        const book = DatabaseStore.searchByISBN(e.target.value);
+    document.getElementById('takeISBN').addEventListener('input', async (e) => {
+        const book = await DatabaseStore.searchByISBN(e.target.value);
         const infoDiv = document.getElementById('takeBookInfo');
         if (book) {
             infoDiv.classList.remove('hidden');
@@ -768,23 +947,36 @@ function renderTakeBookView() {
     });
 }
 
-function renderDropBookView() {
-    const myBooks = DatabaseStore.currentUser.myBooks.map(isbn => DatabaseStore.searchByISBN(isbn));
+async function renderDropBookView() {
     const content = document.getElementById('mainContent');
     content.innerHTML = `
         <h1 class="text-3xl font-bold text-emerald-500 mb-8 flex items-center gap-3">
             <i data-lucide="book-minus" class="w-8 h-8"></i>
             Drop a Book
         </h1>
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
+        </div>
+    `;
+    
+    const myBookPromises = DatabaseStore.currentUser.myBooks.map(isbn => DatabaseStore.searchByISBN(isbn));
+    const myBooks = await Promise.all(myBookPromises);
+    const validBooks = myBooks.filter(book => book !== null);
+    
+    content.innerHTML = `
+        <h1 class="text-3xl font-bold text-emerald-500 mb-8 flex items-center gap-3">
+            <i data-lucide="book-minus" class="w-8 h-8"></i>
+            Drop a Book
+        </h1>
         
-        ${myBooks.length === 0 ? `
+        ${validBooks.length === 0 ? `
             <div class="text-center py-12 text-slate-400">
                 <i data-lucide="inbox" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
                 <p>You have no books to return</p>
             </div>
         ` : `
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                ${myBooks.map(book => `
+                ${validBooks.map(book => `
                     <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
                         <h3 class="text-lg font-bold text-emerald-500 mb-2">${book.title}</h3>
                         <p class="text-sm text-slate-400 mb-4">by ${book.author}</p>
@@ -801,11 +993,25 @@ function renderDropBookView() {
             </div>
         `}
     `;
+    lucide.createIcons();
 }
 
-function renderProfileView() {
-    const myBooks = DatabaseStore.currentUser.myBooks.map(isbn => DatabaseStore.searchByISBN(isbn));
+async function renderProfileView() {
     const content = document.getElementById('mainContent');
+    content.innerHTML = `
+        <h1 class="text-3xl font-bold text-emerald-500 mb-8 flex items-center gap-3">
+            <i data-lucide="user-circle" class="w-8 h-8"></i>
+            My Profile
+        </h1>
+        <div class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
+        </div>
+    `;
+    
+    const myBookPromises = DatabaseStore.currentUser.myBooks.map(isbn => DatabaseStore.searchByISBN(isbn));
+    const myBooks = await Promise.all(myBookPromises);
+    const validBooks = myBooks.filter(book => book !== null);
+    
     content.innerHTML = `
         <h1 class="text-3xl font-bold text-emerald-500 mb-8 flex items-center gap-3">
             <i data-lucide="user-circle" class="w-8 h-8"></i>
@@ -825,12 +1031,12 @@ function renderProfileView() {
                 </div>
                 
                 <div class="border-t border-slate-700 pt-6">
-                    <h3 class="text-lg font-semibold mb-4">Books I Have (${myBooks.length})</h3>
-                    ${myBooks.length === 0 ? `
+                    <h3 class="text-lg font-semibold mb-4">Books I Have (${validBooks.length})</h3>
+                    ${validBooks.length === 0 ? `
                         <p class="text-slate-400 text-sm">No books currently borrowed</p>
                     ` : `
                         <div class="space-y-3">
-                            ${myBooks.map(book => `
+                            ${validBooks.map(book => `
                                 <div class="bg-slate-700 p-4 rounded-lg">
                                     <p class="font-medium">${book.title}</p>
                                     <p class="text-sm text-slate-400">by ${book.author}</p>
@@ -843,6 +1049,7 @@ function renderProfileView() {
             </div>
         </div>
     `;
+    lucide.createIcons();
 }
 
 function showLoginModal() {
@@ -881,10 +1088,10 @@ function showRegisterModal() {
     `, []);
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.login(formData.get('username'), formData.get('password'));
+    const result = await DatabaseStore.login(formData.get('username'), formData.get('password'));
     
     if (result.success) {
         showToast('[SUCCESS] Login successful!', 'success');
@@ -896,10 +1103,10 @@ function handleLogin(event) {
     }
 }
 
-function handleRegister(event) {
+async function handleRegister(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.register(formData.get('username'), formData.get('password'));
+    const result = await DatabaseStore.register(formData.get('username'), formData.get('password'));
     
     if (result.success) {
         showToast('[SUCCESS] ' + result.message, 'success');
@@ -915,10 +1122,10 @@ function continueAsGuest() {
     renderView('search');
 }
 
-function handleAddBook(event) {
+async function handleAddBook(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.addBook(
+    const result = await DatabaseStore.addBook(
         formData.get('isbn'),
         formData.get('title'),
         formData.get('author'),
@@ -936,7 +1143,12 @@ function handleAddBook(event) {
     }
 }
 
-function showUpdateBookModal(book) {
+async function showUpdateBookModal(isbn) {
+    const book = await DatabaseStore.searchByISBN(isbn);
+    if (!book) {
+        showToast('[ERROR] Book not found', 'error');
+        return;
+    }
     showModal('Update Book Details', `
         <form onsubmit="handleUpdateBook(event, '${book.isbn}')" class="space-y-4">
             <div>
@@ -966,10 +1178,12 @@ function showUpdateBookModal(book) {
     `, []);
 }
 
-function handleUpdateBook(event, isbn) {
+async function handleUpdateBook(event, isbn) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.updateBook(
+    
+    // Update book details (title, author, category, price)
+    const result = await DatabaseStore.updateBook(
         isbn,
         formData.get('title'),
         formData.get('author'),
@@ -977,19 +1191,30 @@ function handleUpdateBook(event, isbn) {
         parseFloat(formData.get('price'))
     );
     
-    const stockResult = DatabaseStore.updateStock(isbn, parseInt(formData.get('stock')));
+    console.log('Book update result:', result);
+    
+    // Update stock separately (different endpoint)
+    const stockResult = await DatabaseStore.updateStock(isbn, parseInt(formData.get('stock')));
+    
+    console.log('Stock update result:', stockResult);
     
     if (result.success && stockResult.success) {
         showToast('[SUCCESS] Book updated successfully!', 'success');
         closeModal();
         renderView('allBooks');
     } else {
-        showToast('[ERROR] Update failed!', 'error');
+        const errorMsg = !result.success ? 'Book update failed' : 'Stock update failed';
+        console.error(errorMsg, { result, stockResult });
+        showToast(`[ERROR] ${errorMsg}`, 'error');
     }
 }
 
-function deleteBookConfirm(isbn) {
-    const book = DatabaseStore.searchByISBN(isbn);
+async function deleteBookConfirm(isbn) {
+    const book = await DatabaseStore.searchByISBN(isbn);
+    if (!book) {
+        showToast('[ERROR] Book not found', 'error');
+        return;
+    }
     showModal('Delete Book', `
         <div class="text-center">
             <i data-lucide="alert-triangle" class="w-16 h-16 text-red-500 mx-auto mb-4"></i>
@@ -1004,8 +1229,8 @@ function deleteBookConfirm(isbn) {
     lucide.createIcons();
 }
 
-function deleteBookExecute(isbn) {
-    const result = DatabaseStore.deleteBook(isbn);
+async function deleteBookExecute(isbn) {
+    const result = await DatabaseStore.deleteBook(isbn);
     if (result.success) {
         showToast('[SUCCESS] ' + result.message, 'success');
         closeModal();
@@ -1015,16 +1240,24 @@ function deleteBookExecute(isbn) {
     }
 }
 
-function handleProcessSale(event) {
+async function handleProcessSale(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.processSale(
-        formData.get('isbn'),
-        parseInt(formData.get('quantity'))
-    );
+    const isbn = formData.get('isbn');
+    const quantity = parseInt(formData.get('quantity'));
+    
+    // Get book details first to calculate total
+    const book = await DatabaseStore.searchByISBN(isbn);
+    if (!book) {
+        showToast('[ERROR] Book not found', 'error');
+        return;
+    }
+    
+    const result = await DatabaseStore.processSale(isbn, quantity);
     
     if (result.success) {
-        showToast(`[SUCCESS] Sale processed! Total: $${result.total.toFixed(2)}`, 'success');
+        const total = book.price * quantity;
+        showToast(`[SUCCESS] Sale processed! Total: $${total.toFixed(2)}`, 'success');
         event.target.reset();
         document.getElementById('saleBookInfo').classList.add('hidden');
     } else {
@@ -1032,10 +1265,10 @@ function handleProcessSale(event) {
     }
 }
 
-function handleTakeBook(event) {
+async function handleTakeBook(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const result = DatabaseStore.takeBook(formData.get('isbn'));
+    const result = await DatabaseStore.takeBook(formData.get('isbn'));
     
     if (result.success) {
         showToast('[SUCCESS] ' + result.message, 'success');
@@ -1046,8 +1279,8 @@ function handleTakeBook(event) {
     }
 }
 
-function handleDropBook(isbn) {
-    const result = DatabaseStore.dropBook(isbn);
+async function handleDropBook(isbn) {
+    const result = await DatabaseStore.dropBook(isbn);
     if (result.success) {
         showToast('[SUCCESS] ' + result.message, 'success');
         renderView('dropBook');
@@ -1056,11 +1289,13 @@ function handleDropBook(isbn) {
     }
 }
 
-function searchByISBN(event) {
+async function searchByISBN(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const book = DatabaseStore.searchByISBN(formData.get('isbn'));
     const resultsDiv = document.getElementById('searchResults');
+    resultsDiv.innerHTML = '<div class="text-center py-8 text-emerald-500">Searching...</div>';
+    
+    const book = await DatabaseStore.searchByISBN(formData.get('isbn'));
     
     if (book) {
         resultsDiv.innerHTML = `
@@ -1084,11 +1319,13 @@ function searchByISBN(event) {
     }
 }
 
-function searchByCategory(event) {
+async function searchByCategory(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const results = DatabaseStore.searchByCategory(formData.get('category'));
     const resultsDiv = document.getElementById('searchResults');
+    resultsDiv.innerHTML = '<div class="text-center py-8 text-blue-500">Searching...</div>';
+    
+    const results = await DatabaseStore.searchByCategory(formData.get('category'));
     
     if (results.length > 0) {
         resultsDiv.innerHTML = `
@@ -1114,14 +1351,16 @@ function searchByCategory(event) {
     }
 }
 
-function searchByPrice(event) {
+async function searchByPrice(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
-    const results = DatabaseStore.searchByPrice(
+    const resultsDiv = document.getElementById('searchResults');
+    resultsDiv.innerHTML = '<div class="text-center py-8 text-purple-500">Searching...</div>';
+    
+    const results = await DatabaseStore.searchByPrice(
         parseFloat(formData.get('minPrice')),
         parseFloat(formData.get('maxPrice'))
     );
-    const resultsDiv = document.getElementById('searchResults');
     
     if (results.length > 0) {
         resultsDiv.innerHTML = `
@@ -1148,12 +1387,9 @@ function searchByPrice(event) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const hasData = DatabaseStore.loadFromLocalStorage();
+    DatabaseStore.loadFromLocalStorage();
     
-    if (!hasData) {
-        await DatabaseStore.loadBooksFromJSON();
-        DatabaseStore.saveToLocalStorage();
-    }
+    await DatabaseStore.loadBooksFromBackend();
     
     document.getElementById('logoutBtn').addEventListener('click', () => {
         DatabaseStore.logout();
@@ -1162,7 +1398,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderView('auth');
     });
     
-    renderView('auth');
+    // If user is already logged in from previous session, go to dashboard
+    if (DatabaseStore.currentUser) {
+        renderView('dashboard');
+    } else {
+        renderView('auth');
+    }
     renderSidebar();
     lucide.createIcons();
 });

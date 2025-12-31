@@ -101,9 +101,20 @@ bool DatabaseManager::updateBook(string isbn, string title, string author, strin
 
 bool DatabaseManager::processSale(string isbn, int quantity) {
     std::lock_guard<std::mutex> lock(dbMutex);
-    Book* book = isbnIndex.search(isbn);
-    if (book == nullptr) {
+    Book* hashBook = isbnIndex.search(isbn);
+    if (hashBook == nullptr) {
         cout << "Book with ISBN " << isbn << " not found!" << endl;
+        return false;
+    }
+    Book* book = nullptr;
+    for (size_t i = 0; i < allBooks.size(); i++) {
+        if (allBooks[i].isbn == isbn) {
+            book = &allBooks[i];
+            break;
+        }
+    }
+    if (book == nullptr) {
+        cout << "Book with ISBN " << isbn << " not found in main storage!" << endl;
         return false;
     }
     if (book->stock < quantity) {
@@ -112,6 +123,8 @@ bool DatabaseManager::processSale(string isbn, int quantity) {
     }
     book->stock -= quantity;
     book->salesCount += quantity;
+    hashBook->stock = book->stock;
+    hashBook->salesCount = book->salesCount;
     lowStockHeap.updateStock(isbn, book->stock);
     if (bestSellersHeap.contains(isbn)) {
         bestSellersHeap.updateSales(isbn, book->salesCount);
@@ -125,12 +138,23 @@ bool DatabaseManager::processSale(string isbn, int quantity) {
 
 bool DatabaseManager::updateStock(string isbn, int newStock) {
     std::lock_guard<std::mutex> lock(dbMutex);
-    Book* book = isbnIndex.search(isbn);
-    if (book == nullptr) {
+    Book* hashBook = isbnIndex.search(isbn);
+    if (hashBook == nullptr) {
         cout << "Book with ISBN " << isbn << " not found!" << endl;
         return false;
     }
+    Book* book = nullptr;
+    for (size_t i = 0; i < allBooks.size(); i++) {
+        if (allBooks[i].isbn == isbn) {
+            book = &allBooks[i];
+            break;
+        }
+    }
+    if (book == nullptr) {
+        return false;
+    }
     book->stock = newStock;
+    hashBook->stock = newStock;
     lowStockHeap.updateStock(isbn, newStock);
     saveToDisk();
     return true;
@@ -223,7 +247,17 @@ void DatabaseManager::saveToDisk() {
 }
 bool DatabaseManager::takeBook(string isbn) {
     std::lock_guard<std::mutex> lock(dbMutex);
-    Book* book = isbnIndex.search(isbn);
+    Book* hashBook = isbnIndex.search(isbn);
+    if (hashBook == nullptr) {
+        return false;
+    }
+    Book* book = nullptr;
+    for (size_t i = 0; i < allBooks.size(); i++) {
+        if (allBooks[i].isbn == isbn) {
+            book = &allBooks[i];
+            break;
+        }
+    }
     if (book == nullptr) {
         return false;
     }
@@ -232,6 +266,8 @@ bool DatabaseManager::takeBook(string isbn) {
     }
     book->stock -= 1;
     book->salesCount += 1;
+    hashBook->stock = book->stock;
+    hashBook->salesCount = book->salesCount;
     lowStockHeap.updateStock(isbn, book->stock);
     if (bestSellersHeap.contains(isbn)) {
         bestSellersHeap.updateSales(isbn, book->salesCount);
@@ -245,11 +281,22 @@ bool DatabaseManager::takeBook(string isbn) {
 
 bool DatabaseManager::dropBook(string isbn) {
     std::lock_guard<std::mutex> lock(dbMutex);
-    Book* book = isbnIndex.search(isbn);
+    Book* hashBook = isbnIndex.search(isbn);
+    if (hashBook == nullptr) {
+        return false;
+    }
+    Book* book = nullptr;
+    for (size_t i = 0; i < allBooks.size(); i++) {
+        if (allBooks[i].isbn == isbn) {
+            book = &allBooks[i];
+            break;
+        }
+    }
     if (book == nullptr) {
         return false;
     }
     book->stock += 1;
+    hashBook->stock = book->stock;
     lowStockHeap.updateStock(isbn, book->stock);
     saveToDisk();
     return true;
